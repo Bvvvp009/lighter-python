@@ -1,6 +1,21 @@
-# Lighter Python
+# Lighter SDKs
 
-Python SDK for Lighter
+This repository contains both Python and TypeScript SDKs for the Lighter perpetual trading platform.
+
+## Python SDK
+
+Python SDK for Lighter with complete API coverage and transaction functionality.
+
+## TypeScript SDK
+
+A comprehensive TypeScript SDK with full feature parity to the Python SDK, including:
+- Complete API coverage
+- Type safety with comprehensive TypeScript definitions
+- Transaction building and signing
+- WebSocket real-time data streaming
+- Authentication support
+
+See [lighter-ts/README.md](lighter-ts/README.md) for detailed TypeScript SDK documentation.
 
 ## Requirements.
 
