@@ -17,7 +17,7 @@ from lighter.errors import ValidationError
 from lighter.models import TxHash
 from lighter import nonce_manager
 from lighter.models.resp_send_tx import RespSendTx
-from lighter.transactions import CreateOrder, CancelOrder, Withdraw
+from lighter.transactions import CreateOrder, CancelOrder, Withdraw, CreateGroupedOrders
 
 CODE_OK = 200
 
@@ -25,6 +25,19 @@ CODE_OK = 200
 class ApiKeyResponse(ctypes.Structure):
     _fields_ = [("privateKey", ctypes.c_char_p), ("publicKey", ctypes.c_char_p), ("err", ctypes.c_char_p)]
 
+class CreateOrderTxReq(ctypes.Structure):
+    _fields_ = [
+        ("MarketIndex", ctypes.c_uint8),
+        ("ClientOrderIndex", ctypes.c_longlong),
+        ("BaseAmount", ctypes.c_longlong),
+        ("Price", ctypes.c_uint32),
+        ("IsAsk", ctypes.c_uint8),
+        ("Type", ctypes.c_uint8),
+        ("TimeInForce", ctypes.c_uint8),
+        ("ReduceOnly", ctypes.c_uint8),
+        ("TriggerPrice", ctypes.c_uint32),
+        ("OrderExpiry", ctypes.c_longlong),
+    ]
 
 class StrOrErr(ctypes.Structure):
     _fields_ = [("str", ctypes.c_char_p), ("err", ctypes.c_char_p)]
@@ -126,6 +139,7 @@ class SignerClient:
     TX_TYPE_MINT_SHARES = 18
     TX_TYPE_BURN_SHARES = 19
     TX_TYPE_UPDATE_LEVERAGE = 20
+    TX_TYPE_CREATE_GROUP_ORDER = 28
 
     ORDER_TYPE_LIMIT = 0
     ORDER_TYPE_MARKET = 1
@@ -151,6 +165,10 @@ class SignerClient:
 
     CROSS_MARGIN_MODE  = 0
     ISOLATED_MARGIN_MODE = 1
+
+    GROUPING_TYPE_ONE_TRIGGERS_THE_OTHER = 1
+    GROUPING_TYPE_ONE_CANCELS_THE_OTHER = 2 
+    GROUPING_TYPE_ONE_TRIGGERS_A_ONE_CANCELS_THE_OTHER = 3
 
     def __init__(
         self,
@@ -352,6 +370,31 @@ class SignerClient:
         tx_info = result.str.decode("utf-8") if result.str else None
         error = result.err.decode("utf-8") if result.err else None
 
+        return tx_info, error
+
+    def sign_create_grouped_orders(
+        self,
+        grouping_type: int,
+        orders: list[CreateOrderTxReq],
+        nonce=-1,
+    ):
+        arr_type = CreateOrderTxReq * len(orders)
+        orders_arr = arr_type(*orders)
+
+        self.signer.SignCreateGroupedOrders.argtypes = [
+            ctypes.c_uint8,
+            ctypes.POINTER(CreateOrderTxReq),
+            ctypes.c_int,
+            ctypes.c_longlong,
+        ]
+        self.signer.SignCreateGroupedOrders.restype = StrOrErr
+        
+        result = self.signer.SignCreateGroupedOrders(
+            grouping_type, orders_arr, len(orders), nonce
+        )
+        
+        tx_info = result.str.decode("utf-8") if result.str else None
+        error = result.err.decode("utf-8") if result.err else None
         return tx_info, error
 
     def sign_cancel_order(self, market_index, order_index, nonce=-1):
@@ -590,6 +633,27 @@ class SignerClient:
         api_response = await self.send_tx(tx_type=self.TX_TYPE_CREATE_ORDER, tx_info=tx_info)
         logging.debug(f"Create Order Send Tx Response: {api_response}")
         return CreateOrder.from_json(tx_info), api_response, None
+
+    @process_api_key_and_nonce
+    async def create_grouped_orders(
+        self,
+        grouping_type: int,
+        orders: list[CreateOrderTxReq],
+        nonce=-1,
+        api_key_index=-1,
+    ) -> (CreateGroupedOrders, TxHash, str):
+        tx_info, error = self.sign_create_grouped_orders(
+            grouping_type,
+            orders,
+            nonce,
+        )
+        if error is not None:
+            return None, None, error
+        logging.debug(f"Create Grouped Orders Tx Info: {tx_info}")
+
+        api_response = await self.send_tx(tx_type=self.TX_TYPE_CREATE_GROUP_ORDER, tx_info=tx_info)
+        logging.debug(f"Create Grouped Orders Send Tx Response: {api_response}")
+        return CreateGroupedOrders.from_json(tx_info), api_response, None
 
     async def create_market_order(
         self,
