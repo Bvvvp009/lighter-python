@@ -6,7 +6,7 @@ import platform
 import logging
 import os
 import time
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -375,7 +375,7 @@ class SignerClient:
     def sign_create_grouped_orders(
         self,
         grouping_type: int,
-        orders: list[CreateOrderTxReq],
+        orders: List[CreateOrderTxReq],
         nonce=-1,
     ):
         arr_type = CreateOrderTxReq * len(orders)
@@ -638,7 +638,7 @@ class SignerClient:
     async def create_grouped_orders(
         self,
         grouping_type: int,
-        orders: list[CreateOrderTxReq],
+        orders: List[CreateOrderTxReq],
         nonce=-1,
         api_key_index=-1,
     ) -> (CreateGroupedOrders, TxHash, str):
