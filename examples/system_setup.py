@@ -3,6 +3,7 @@ import logging
 import time
 import eth_account
 import lighter
+from utils import save_api_key_config
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -69,14 +70,7 @@ async def main():
     if err is not None:
         raise Exception(err)
 
-    print(
-        f"""
-BASE_URL = '{BASE_URL}'
-API_KEY_PRIVATE_KEY = '{private_key}'
-ACCOUNT_INDEX = {account_index}
-API_KEY_INDEX = {API_KEY_INDEX}
-    """
-    )
+    save_api_key_config(BASE_URL, private_key, account_index, API_KEY_INDEX)
 
     await tx_client.close()
     await api_client.close()

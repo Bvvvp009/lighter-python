@@ -1,73 +1,76 @@
-import lighter
 import json
 import websockets
 import asyncio
 
-# The API_KEY_PRIVATE_KEY provided belongs to a dummy account registered on Testnet.
-# It was generated using the setup_system.py script, and servers as an example.
-# Alternatively, you can go to https://app.lighter.xyz/apikeys for mainnet api keys
-BASE_URL = "https://testnet.zklighter.elliot.ai"
-API_KEY_PRIVATE_KEY = (
-    "0xed636277f3753b6c0275f7a28c2678a7f3a95655e09deaebec15179b50c5da7f903152e50f594f7b"
-)
-ACCOUNT_INDEX = 65
-API_KEY_INDEX = 3
+import lighter
+from utils import default_example_setup
 
 
-async def ws_flow(tx_type, tx_info):
-    async with websockets.connect(f"{BASE_URL.replace('https', 'wss')}/stream") as ws:
-        msg = await ws.recv()
-        print("Received:", msg)
-
-        await ws.send(
-            json.dumps(
-                {
-                    "type": "jsonapi/sendtx",
-                    "data": {
-                        "id": f"my_random_id_{12345678}", # optional, helps id the response
-                        "tx_type": tx_type,
-                        "tx_info": json.loads(tx_info),
-                    },
-                }
-            )
+async def ws_send_tx(ws_client: websockets.ClientConnection, tx_type, tx_info):
+    await ws_client.send(
+        json.dumps(
+            {
+                "type": "jsonapi/sendtx",
+                "data": {
+                    "id": f"my_random_id_{12345678}",  # optional, helps id the response
+                    "tx_type": tx_type,
+                    "tx_info": json.loads(tx_info),
+                },
+            }
         )
+    )
 
-        print("Response:", await ws.recv())
+    print("Response:", await ws_client.recv())
 
 
+# this example does the same thing as the create_modify_cancel_order.py example, but sends the TX over WS instead of HTTP
 async def main():
-    client = lighter.SignerClient(
-        url=BASE_URL,
-        private_key=API_KEY_PRIVATE_KEY,
-        account_index=ACCOUNT_INDEX,
-        api_key_index=API_KEY_INDEX,
-    )
-    configuration = lighter.Configuration(BASE_URL)
-    api_client = lighter.ApiClient(configuration)
-    transaction_api = lighter.TransactionApi(api_client)
+    client, api_client, ws_client_promise = default_example_setup()
 
-    next_nonce = await transaction_api.next_nonce(
-        account_index=ACCOUNT_INDEX, api_key_index=API_KEY_INDEX
-    )
-    nonce_value = next_nonce.nonce
+    # setup WS client and print connected message
+    ws_client: websockets.ClientConnection = await ws_client_promise
+    print("Received:", await ws_client.recv())
 
-    tx_info, error = client.sign_create_order(
+    # create order
+    tx_type, tx_info, err = client.sign_create_order(
         market_index=0,
-        client_order_index=1002,  # Different unique identifier
-        base_amount=200000,
-        price=200000,
-        is_ask=False,
-        order_type=client.ORDER_TYPE_LIMIT,
-        time_in_force=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
+        client_order_index=123,
+        base_amount=1000,  # 0.1 ETH
+        price=405000,  # $4050
+        is_ask=True,
+        order_type=lighter.SignerClient.ORDER_TYPE_LIMIT,
+        time_in_force=lighter.SignerClient.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
         reduce_only=False,
         trigger_price=0,
-        nonce=nonce_value,
     )
-    if error is not None:
-        print(f"Error signing order: {error}")
-        return
+    if err is not None:
+        raise Exception(err)
+    await ws_send_tx(ws_client, tx_type, tx_info)
 
-    await ws_flow(lighter.SignerClient.TX_TYPE_CREATE_ORDER, tx_info)
+    # modify order
+    tx_type, tx_info, err = client.sign_modify_order(
+        market_index=0,
+        order_index=123,
+        base_amount=1100,  # 0.11 ETH
+        price=410000,  # $4100
+        trigger_price=0,
+    )
+    if err is not None:
+        raise Exception(err)
+    await ws_send_tx(ws_client, tx_type, tx_info)
+
+    # cancel order
+    tx_type, tx_info, err = client.sign_cancel_order(
+        market_index=0,
+        order_index=123,
+    )
+    if err is not None:
+        raise Exception(err)
+    await ws_send_tx(ws_client, tx_type, tx_info)
+
+    await client.close()
+    await api_client.close()
+    await ws_client.close()
 
 
 if __name__ == "__main__":

@@ -73,3 +73,4 @@ examples/secrets.py
 # Environment variables
 .env
 .env.*
+api_key_config.json
