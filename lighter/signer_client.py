@@ -45,6 +45,16 @@ class StrOrErr(ctypes.Structure):
     _fields_ = [("str", ctypes.c_char_p), ("err", ctypes.c_char_p)]
 
 
+class SignedTxResponse(ctypes.Structure):
+    _fields_ = [
+        ("txType", ctypes.c_uint8),
+        ("txInfo", ctypes.c_char_p),
+        ("txHash", ctypes.c_char_p),
+        ("messageToSign", ctypes.c_char_p),
+        ("err", ctypes.c_char_p),
+    ]
+
+
 __signer = None
 
 
@@ -83,54 +93,57 @@ def __populate_shared_library_functions(signer):
     signer.CheckClient.argtypes = [ctypes.c_int, ctypes.c_longlong]
     signer.CheckClient.restype = ctypes.c_char_p
 
-    signer.SignChangePubKey.argtypes = [ctypes.c_char_p, ctypes.c_longlong]
-    signer.SignChangePubKey.restype = StrOrErr
+    signer.SignChangePubKey.argtypes = [ctypes.c_char_p, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignChangePubKey.restype = SignedTxResponse
 
     signer.SignCreateOrder.argtypes = [ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-                                            ctypes.c_int, ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignCreateOrder.restype = StrOrErr
+                                            ctypes.c_int, ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignCreateOrder.restype = SignedTxResponse
 
-    signer.SignCreateGroupedOrders.argtypes = [ctypes.c_uint8, ctypes.POINTER(CreateOrderTxReq), ctypes.c_int, ctypes.c_longlong]
-    signer.SignCreateGroupedOrders.restype = StrOrErr
+    signer.SignCreateGroupedOrders.argtypes = [ctypes.c_uint8, ctypes.POINTER(CreateOrderTxReq), ctypes.c_int, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignCreateGroupedOrders.restype = SignedTxResponse
 
-    signer.SignCancelOrder.argtypes = [ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignCancelOrder.restype = StrOrErr
+    signer.SignCancelOrder.argtypes = [ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignCancelOrder.restype = SignedTxResponse
 
-    signer.SignWithdraw.argtypes = [ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignWithdraw.restype = StrOrErr
+    signer.SignWithdraw.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignWithdraw.restype = SignedTxResponse
 
-    signer.SignCreateSubAccount.argtypes = [ctypes.c_longlong]
-    signer.SignCreateSubAccount.restype = StrOrErr
+    signer.SignCreateSubAccount.argtypes = [ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignCreateSubAccount.restype = SignedTxResponse
 
-    signer.SignCancelAllOrders.argtypes = [ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignCancelAllOrders.restype = StrOrErr
+    signer.SignCancelAllOrders.argtypes = [ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignCancelAllOrders.restype = SignedTxResponse
 
-    signer.SignModifyOrder.argtypes = [ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignModifyOrder.restype = StrOrErr
+    signer.SignModifyOrder.argtypes = [ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignModifyOrder.restype = SignedTxResponse
 
-    signer.SignTransfer.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_char_p, ctypes.c_longlong]
-    signer.SignTransfer.restype = StrOrErr
+    signer.SignTransfer.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_char_p, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignTransfer.restype = SignedTxResponse
 
-    signer.SignCreatePublicPool.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignCreatePublicPool.restype = StrOrErr
+    signer.SignCreatePublicPool.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignCreatePublicPool.restype = SignedTxResponse
 
-    signer.SignUpdatePublicPool.argtypes = [ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignUpdatePublicPool.restype = StrOrErr
+    signer.SignUpdatePublicPool.argtypes = [ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignUpdatePublicPool.restype = SignedTxResponse
 
-    signer.SignMintShares.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignMintShares.restype = StrOrErr
+    signer.SignMintShares.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignMintShares.restype = SignedTxResponse
 
-    signer.SignBurnShares.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong]
-    signer.SignBurnShares.restype = StrOrErr
+    signer.SignBurnShares.argtypes = [ctypes.c_longlong, ctypes.c_longlong, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignBurnShares.restype = SignedTxResponse
 
-    signer.SignUpdateLeverage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_longlong]
-    signer.SignUpdateLeverage.restype = StrOrErr
+    signer.SignUpdateLeverage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignUpdateLeverage.restype = SignedTxResponse
 
-    signer.CreateAuthToken.argtypes = [ctypes.c_longlong]
+    signer.CreateAuthToken.argtypes = [ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
     signer.CreateAuthToken.restype = StrOrErr
 
-    signer.SwitchAPIKey.argtypes = [ctypes.c_int]
-    signer.SwitchAPIKey.restype = ctypes.c_char_p
+    # Note: SwitchAPIKey is no longer exported in the new binary
+    # All functions now take api_key_index directly, so switching is handled via parameters
+
+    signer.SignUpdateMargin.argtypes = [ctypes.c_int, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong, ctypes.c_int, ctypes.c_longlong]
+    signer.SignUpdateMargin.restype = SignedTxResponse
 
 
 def get_signer():
@@ -293,31 +306,52 @@ class SignerClient:
 
     # === signer helpers ===
     @staticmethod
-    def __decode_tx_info(tx_type: int, result: StrOrErr):
-        tx_info_str = result.str.decode("utf-8") if result.str else None
-        error = result.err.decode("utf-8") if result.err else None
+    def __decode_tx_info(tx_type: int, result: SignedTxResponse):
+        if result.err:
+            error = result.err.decode("utf-8")
+            return tx_type, None, error
 
-        return tx_type, tx_info_str, error
+        # Use txType from response if available, otherwise use the provided type
+        actual_tx_type = result.txType if result.txType else tx_type
+        tx_info_str = result.txInfo.decode("utf-8") if result.txInfo else None
+        error = None
+
+        return actual_tx_type, tx_info_str, error
 
     @staticmethod
-    def __decode_and_sign_tx_info(eth_private_key: str, tx_type: int, result: StrOrErr):
-        tx_info_str = result.str.decode("utf-8") if result.str else None
-        err = result.err.decode("utf-8") if result.err else None
-
-        if err is not None:
+    def __decode_and_sign_tx_info(eth_private_key: str, tx_type: int, result: SignedTxResponse):
+        if result.err:
+            err = result.err.decode("utf-8")
             return None, None, err
 
-        # fetch message to sign
+        # Get messageToSign from response struct (may be None for some tx types)
+        msg_to_sign = result.messageToSign.decode("utf-8") if result.messageToSign else None
+        tx_info_str = result.txInfo.decode("utf-8") if result.txInfo else None
+
+        if not tx_info_str:
+            return None, None, "no tx info in response"
+
+        # fetch message to sign (either from response or from tx_info JSON)
         tx_info = json.loads(tx_info_str)
-        msg_to_sign = tx_info["MessageToSign"]
-        del tx_info["MessageToSign"]
+        if msg_to_sign:
+            # Use messageToSign from response
+            pass
+        elif "MessageToSign" in tx_info:
+            # Fallback to MessageToSign in JSON
+            msg_to_sign = tx_info["MessageToSign"]
+            del tx_info["MessageToSign"]
+        else:
+            return None, None, "no message to sign found"
 
         # sign the message
         acct = Account.from_key(eth_private_key)
         message = encode_defunct(text=msg_to_sign)
         signature = acct.sign_message(message)
         tx_info["L1Sig"] = signature.signature.to_0x_hex()
-        return tx_type, json.dumps(tx_info), None
+
+        # Use actual txType from response
+        actual_tx_type = result.txType if result.txType else tx_type
+        return actual_tx_type, json.dumps(tx_info), None
 
     def validate_api_private_keys(self, initial_private_key: str, private_keys: Dict[int, str]):
         if len(private_keys) == self.end_api_key_index - self.api_key_index + 1:
@@ -371,8 +405,10 @@ class SignerClient:
         return None
 
     def switch_api_key(self, api_key: int):
-        err = self.signer.SwitchAPIKey(api_key)
-        return err.decode("utf-8") if err else None
+        # SwitchAPIKey is no longer exported in the new binary
+        # All functions now take api_key_index directly, so switching is handled via parameters
+        # This function is kept for backward compatibility but does nothing
+        return None
 
     @staticmethod
     def create_api_key(self, seed=""):
@@ -394,7 +430,7 @@ class SignerClient:
         if timestamp is None:
             timestamp = int(time.time())
 
-        result = self.signer.CreateAuthToken(deadline+timestamp)
+        result = self.signer.CreateAuthToken(deadline+timestamp, self.api_key_index, self.account_index)
 
         auth = result.str.decode("utf-8") if result.str else None
         error = result.err.decode("utf-8") if result.err else None
@@ -403,7 +439,9 @@ class SignerClient:
     def sign_change_api_key(self, eth_private_key: str, new_pubkey: str, nonce: int = -1):
         return self.__decode_and_sign_tx_info(eth_private_key, self.TX_TYPE_CHANGE_PUB_KEY, self.signer.SignChangePubKey(
             ctypes.c_char_p(new_pubkey.encode("utf-8")),
-            nonce
+            nonce,
+            self.api_key_index,
+            self.account_index
         ))
 
     async def change_api_key(self, eth_private_key: str, new_pubkey: str, nonce=-1):
@@ -442,6 +480,8 @@ class SignerClient:
             trigger_price,
             order_expiry,
             nonce,
+            self.api_key_index,
+            self.account_index,
         ))
 
     def sign_create_grouped_orders(
@@ -454,48 +494,48 @@ class SignerClient:
         orders_arr = arr_type(*orders)
 
         return self.__decode_tx_info(self.TX_TYPE_CREATE_GROUP_ORDER, self.signer.SignCreateGroupedOrders(
-            grouping_type, orders_arr, len(orders), nonce
+            grouping_type, orders_arr, len(orders), nonce, self.api_key_index, self.account_index
         ))
 
     def sign_cancel_order(self, market_index: int, order_index: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_CANCEL_ORDER, self.signer.SignCancelOrder(market_index, order_index, nonce))
+        return self.__decode_tx_info(self.TX_TYPE_CANCEL_ORDER, self.signer.SignCancelOrder(market_index, order_index, nonce, self.api_key_index, self.account_index))
 
     def sign_withdraw(self, usdc_amount: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_WITHDRAW, self.signer.SignWithdraw(usdc_amount, nonce))
+        return self.__decode_tx_info(self.TX_TYPE_WITHDRAW, self.signer.SignWithdraw(usdc_amount, nonce, self.api_key_index, self.account_index))
 
     def sign_create_sub_account(self, nonce=-1):
-        return self.__decode_tx_info(self.TX_TYPE_CREATE_SUB_ACCOUNT, self.signer.SignCreateSubAccount(nonce))
+        return self.__decode_tx_info(self.TX_TYPE_CREATE_SUB_ACCOUNT, self.signer.SignCreateSubAccount(nonce, self.api_key_index, self.account_index))
 
     def sign_cancel_all_orders(self, time_in_force: int, timestamp_ms: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_CANCEL_ALL_ORDERS, self.signer.SignCancelAllOrders(time_in_force, timestamp_ms, nonce))
+        return self.__decode_tx_info(self.TX_TYPE_CANCEL_ALL_ORDERS, self.signer.SignCancelAllOrders(time_in_force, timestamp_ms, nonce, self.api_key_index, self.account_index))
 
     def sign_modify_order(self, market_index: int, order_index: int, base_amount: int, price: int, trigger_price: int = NIL_TRIGGER_PRICE, nonce: int = -1):
         return self.__decode_tx_info(self.TX_TYPE_MODIFY_ORDER,
-                                     self.signer.SignModifyOrder(market_index, order_index, base_amount, price, trigger_price, nonce))
+                                     self.signer.SignModifyOrder(market_index, order_index, base_amount, price, trigger_price, nonce, self.api_key_index, self.account_index))
 
     def sign_transfer(self, eth_private_key: str, to_account_index: int, usdc_amount: int, fee: int, memo: str, nonce: int = -1):
         return self.__decode_and_sign_tx_info(eth_private_key, self.TX_TYPE_TRANSFER,
-                                              self.signer.SignTransfer(to_account_index, usdc_amount, fee, ctypes.c_char_p(memo.encode("utf-8")), nonce))
+                                              self.signer.SignTransfer(to_account_index, usdc_amount, fee, ctypes.c_char_p(memo.encode("utf-8")), nonce, self.api_key_index, self.account_index))
 
     def sign_create_public_pool(self, operator_fee: int, initial_total_shares: int, min_operator_share_rate: int, nonce: int = -1):
         return self.__decode_tx_info(self.TX_TYPE_CREATE_PUBLIC_POOL,
-                                     self.signer.SignCreatePublicPool(operator_fee, initial_total_shares, min_operator_share_rate, nonce))
+                                     self.signer.SignCreatePublicPool(operator_fee, initial_total_shares, min_operator_share_rate, nonce, self.api_key_index, self.account_index))
 
     def sign_update_public_pool(self, public_pool_index: int, status: int, operator_fee: int, min_operator_share_rate: int, nonce: int = -1):
         return self.__decode_tx_info(self.TX_TYPE_UPDATE_PUBLIC_POOL,
-                                     self.signer.SignUpdatePublicPool(public_pool_index, status, operator_fee, min_operator_share_rate, nonce))
+                                     self.signer.SignUpdatePublicPool(public_pool_index, status, operator_fee, min_operator_share_rate, nonce, self.api_key_index, self.account_index))
 
     def sign_mint_shares(self, public_pool_index: int, share_amount: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_MINT_SHARES, self.signer.SignMintShares(public_pool_index, share_amount, nonce))
+        return self.__decode_tx_info(self.TX_TYPE_MINT_SHARES, self.signer.SignMintShares(public_pool_index, share_amount, nonce, self.api_key_index, self.account_index))
 
     def sign_burn_shares(self, public_pool_index: int, share_amount: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_BURN_SHARES, self.signer.SignBurnShares(public_pool_index, share_amount, nonce))
+        return self.__decode_tx_info(self.TX_TYPE_BURN_SHARES, self.signer.SignBurnShares(public_pool_index, share_amount, nonce, self.api_key_index, self.account_index))
 
     def sign_update_leverage(self, market_index: int, fraction: int, margin_mode: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_UPDATE_LEVERAGE, self.signer.SignUpdateLeverage(market_index, fraction, margin_mode, nonce))
+        return self.__decode_tx_info(self.TX_TYPE_UPDATE_LEVERAGE, self.signer.SignUpdateLeverage(market_index, fraction, margin_mode, nonce, self.api_key_index, self.account_index))
 
     def sign_update_margin(self, market_index: int, usdc_amount: int, direction: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_UPDATE_MARGIN, self.signer.SignUpdateMargin(market_index, usdc_amount, direction, nonce))
+        return self.__decode_tx_info(self.TX_TYPE_UPDATE_MARGIN, self.signer.SignUpdateMargin(market_index, usdc_amount, direction, nonce, self.api_key_index, self.account_index))
 
     @process_api_key_and_nonce
     async def create_order(

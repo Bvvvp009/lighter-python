@@ -1,8 +1,6 @@
 import logging
-
 import json
 import websockets
-
 import lighter
 
 
