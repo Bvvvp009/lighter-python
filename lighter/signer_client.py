@@ -394,7 +394,7 @@ class SignerClient:
         if timestamp is None:
             timestamp = int(time.time())
 
-        result = self.signer.CreateAuthToken(deadline)
+        result = self.signer.CreateAuthToken(deadline+timestamp)
 
         auth = result.str.decode("utf-8") if result.str else None
         error = result.err.decode("utf-8") if result.err else None
