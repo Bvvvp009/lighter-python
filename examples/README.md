@@ -9,14 +9,14 @@
   - the API key config is saved in a local file `./api_key_config.json`
 
 ## Start trading on testnet
-- `create_modify_cancel_order.py`
+- `create_modify_cancel_order_http.py`
   - creates an ask (sell) order for 0.1 ETH @ $4050
   - modified the order and increases the size to 0.11 ETH and increases the price to $4100
   - cancels the order
   - Note: all of these operations use the client order index of the order. You can use the order from the exchange as well
   
-- `ws_send_tx.py`
-  - same flow as `create_modify_cancel_order.py`
+- `create_modify_cancel_order_ws.py`
+  - same flow as `create_modify_cancel_order_http.py`
   - sends TXs over WS instead of HTTP
 
 - `create_grouped_ioc_with_attached_sl_tp.py`
@@ -25,7 +25,7 @@
   - the size of the SL/TP will be equal to the executed size of the order
   - the SL/TP orders are canceled when the sign of your position changes
 
-- `create_position_tied_sl_tl.py`
+- `create_position_tied_sl_tp.py`
   - creates a bid (buy) Stop Loss (SL) and a Take Profit (TP) to close your short position
   - the size of the orders will be for your whole position (because BaseAmount=0)
   - the orders will grow / shrink as you accumulate more position
@@ -42,6 +42,24 @@ You want to set up a take profit at $120'000
 What about the order types? Just as normal orders, SL/TP orders trigger an order, which can be:
 - market order
 - limit IOC / GTC
+
+### Modify leverage / Margin Mode (Cross, Isolated) / Add Collateral to isolated-only positions
+- `margin_eth_20x_cross_http`
+  - sets ETH market to 20x leverage and cross-margin mode, using HTTP
+- `margin_eth_50x_isolate_ws`
+  - sets ETH market to 50x leverage and isolated margin mode, using HTTP
+- `margin_eth_add_collateral_http.py`
+  - adds $10.5 USDC to the ETH position (must be opened and in isolated mode)
+- `margin_eth_remove_collateral_ws.py`
+  - removes $5 USDC from the ETH position (must be opened and in isolated mode)
+
+### Batch orders
+- `send_batch_tx_http.py`
+  - sends multiple orders in a single HTTP request
+- `send_batch_tx_ws.py`
+  - sends multiple orders in a single WS request`
+
+Batch TXs will be executed back to back, without the possibility of other TXs interfering.
 
 ## Setup steps for mainnet
 - deposit money on Lighter to create an account first

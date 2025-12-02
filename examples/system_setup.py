@@ -7,11 +7,12 @@ from utils import save_api_key_config
 
 logging.basicConfig(level=logging.DEBUG)
 
-# this is a dummy private key which is registered on Testnet.
+# this is a dummy private key registered on Testnet.
 # It serves as a good example
 BASE_URL = "https://testnet.zklighter.elliot.ai"
 ETH_PRIVATE_KEY = "1234567812345678123456781234567812345678123456781234567812345678"
 API_KEY_INDEX = 3
+NUM_API_KEYS = 5
 
 
 async def main():
@@ -43,24 +44,32 @@ async def main():
     # create a private/public key pair for the new API key
     # pass any string to be used as seed for create_api_key like
     # create_api_key("Hello world random seed to make things more secure")
-    private_key, public_key, err = lighter.create_api_key()
-    if err is not None:
-        raise Exception(err)
+
+    private_keys = {}
+    public_keys = []
+
+    for i in range(NUM_API_KEYS):
+        private_key, public_key, err = lighter.create_api_key()
+        if err is not None:
+            raise Exception(err)
+        public_keys.append(public_key)
+        private_keys[API_KEY_INDEX + i] = private_key
 
     tx_client = lighter.SignerClient(
         url=BASE_URL,
-        private_key=private_key,
         account_index=account_index,
-        api_key_index=API_KEY_INDEX,
+        api_private_keys=private_keys,
     )
 
-    # change the API key
-    response, err = await tx_client.change_api_key(
-        eth_private_key=ETH_PRIVATE_KEY,
-        new_pubkey=public_key,
-    )
-    if err is not None:
-        raise Exception(err)
+    # change all API keys
+    for i in range(NUM_API_KEYS):
+        response, err = await tx_client.change_api_key(
+            eth_private_key=ETH_PRIVATE_KEY,
+            new_pubkey=public_keys[i],
+            api_key_index=API_KEY_INDEX + i
+        )
+        if err is not None:
+            raise Exception(err)
 
     # wait some time so that we receive the new API key in the response
     time.sleep(10)
@@ -70,7 +79,7 @@ async def main():
     if err is not None:
         raise Exception(err)
 
-    save_api_key_config(BASE_URL, private_key, account_index, API_KEY_INDEX)
+    save_api_key_config(BASE_URL, account_index, private_keys)
 
     await tx_client.close()
     await api_client.close()
