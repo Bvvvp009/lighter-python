@@ -1,12 +1,9 @@
-import lighter
-import logging
 import websockets
 import asyncio
 import time
 
 from utils import default_example_setup, ws_send_batch_tx, trim_exception
 
-logging.basicConfig(level=logging.DEBUG)
 
 # this example does the same thing as the send_batch_tx_http.py example, but sends the TX over WS instead of HTTP
 async def main():

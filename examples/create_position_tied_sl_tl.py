@@ -1,6 +1,4 @@
 import asyncio
-import lighter
-
 from lighter.signer_client import CreateOrderTxReq
 from utils import default_example_setup
 
@@ -25,8 +23,8 @@ async def main():
         BaseAmount=0,
         Price=1550_00,
         IsAsk=0,
-        Type=lighter.SignerClient.ORDER_TYPE_TAKE_PROFIT_LIMIT,
-        TimeInForce=lighter.SignerClient.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
+        Type=client.ORDER_TYPE_TAKE_PROFIT_LIMIT,
+        TimeInForce=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
         ReduceOnly=1,
         TriggerPrice=1500_00,
         OrderExpiry=-1,
@@ -38,15 +36,15 @@ async def main():
         BaseAmount=0,
         Price=4050_00,
         IsAsk=0,
-        Type=lighter.SignerClient.ORDER_TYPE_STOP_LOSS_LIMIT,
-        TimeInForce=lighter.SignerClient.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
+        Type=client.ORDER_TYPE_STOP_LOSS_LIMIT,
+        TimeInForce=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
         ReduceOnly=1,
         TriggerPrice=4000_00,
         OrderExpiry=-1,
     )
 
     transaction = await client.create_grouped_orders(
-        grouping_type=lighter.SignerClient.GROUPING_TYPE_ONE_CANCELS_THE_OTHER,
+        grouping_type=client.GROUPING_TYPE_ONE_CANCELS_THE_OTHER,
         orders=[take_profit_order, stop_loss_order],
     )
 

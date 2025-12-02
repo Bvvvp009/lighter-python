@@ -1,10 +1,7 @@
 import asyncio
-import logging
 import time
-
 from utils import default_example_setup, trim_exception
 
-logging.basicConfig(level=logging.DEBUG)
 
 # this example does the same thing as the send_batch_tx_ws.py example, but sends the TX over HTTP instead of WS
 async def main():
@@ -14,8 +11,8 @@ async def main():
     ask_tx_type, ask_tx_info, ask_tx_hash, error = client.sign_create_order(
         market_index=0,
         client_order_index=1001,  # Unique identifier for this order
-        base_amount=1000, # 0.1 ETH
-        price=5000_00, # $5000
+        base_amount=1000,  # 0.1 ETH
+        price=5000_00,  # $5000
         is_ask=True,
         order_type=client.ORDER_TYPE_LIMIT,
         time_in_force=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
@@ -35,8 +32,8 @@ async def main():
     bid_tx_type, bid_tx_info, bid_tx_hash, error = client.sign_create_order(
         market_index=0,
         client_order_index=1002,  # Different unique identifier
-        base_amount=1000, # 0.1 ETH
-        price=1500_00, # $1500
+        base_amount=1000,  # 0.1 ETH
+        price=1500_00,  # $1500
         is_ask=False,
         order_type=client.ORDER_TYPE_LIMIT,
         time_in_force=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
@@ -67,7 +64,7 @@ async def main():
     api_key_index, nonce = client.nonce_manager.next_nonce()
     cancel_tx_type, cancel_tx_info, cancel_tx_hash, error = client.sign_cancel_order(
         market_index=0,
-        order_index=1001, # the index of the order we want cancelled
+        order_index=1001,  # the index of the order we want cancelled
         nonce=nonce,
         api_key_index=api_key_index,
     )
@@ -82,8 +79,8 @@ async def main():
     new_ask_tx_type, new_ask_tx_info, new_ask_tx_hash, error = client.sign_create_order(
         market_index=0,
         client_order_index=1003,  # Different unique identifier
-        base_amount=2000, # 0.2 ETH
-        price=5500_00, # $5500
+        base_amount=2000,  # 0.2 ETH
+        price=5500_00,  # $5500
         is_ask=True,
         order_type=client.ORDER_TYPE_LIMIT,
         time_in_force=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
@@ -110,6 +107,7 @@ async def main():
     # Clean up
     await client.close()
     await api_client.close()
+
 
 # Run the async main function
 if __name__ == "__main__":

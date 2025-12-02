@@ -1,5 +1,4 @@
 import asyncio
-import lighter
 from utils import default_example_setup
 
 
@@ -13,10 +12,10 @@ async def main():
         market_index=0,
         client_order_index=123,
         base_amount=1000,  # 0.1 ETH
-        price=405000,  # $4050
+        price=4050_00,  # $4050
         is_ask=True,
-        order_type=lighter.SignerClient.ORDER_TYPE_LIMIT,
-        time_in_force=lighter.SignerClient.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
+        order_type=client.ORDER_TYPE_LIMIT,
+        time_in_force=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
         reduce_only=False,
         trigger_price=0,
         nonce=nonce,
@@ -33,7 +32,7 @@ async def main():
         market_index=0,
         order_index=123,
         base_amount=1100,  # 0.11 ETH
-        price=410000,  # $4100
+        price=4100_00,  # $4100
         trigger_price=0,
         nonce=nonce,
         api_key_index=api_key_index,

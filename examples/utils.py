@@ -1,3 +1,4 @@
+from typing import Tuple, Optional
 import logging
 import json
 import websockets
@@ -26,11 +27,10 @@ def get_api_key_config(config_file="./api_key_config.json"):
     for key in private_keys_original.keys():
         private_key[int(key)] = private_keys_original[key]
 
-
     return cfg["baseUrl"], cfg["accountIndex"], private_key
 
 
-def default_example_setup(config_file="./api_key_config.json") -> (lighter.ApiClient, lighter.SignerClient, websockets.ClientConnection):
+def default_example_setup(config_file="./api_key_config.json") -> Optional[Tuple[lighter.SignerClient, lighter.ApiClient, websockets.connect]]:
     logging.basicConfig(level=logging.DEBUG)
 
     base_url, account_index, private_keys = get_api_key_config(config_file)
@@ -47,6 +47,7 @@ def default_example_setup(config_file="./api_key_config.json") -> (lighter.ApiCl
         return
 
     return client, api_client, websockets.connect(f"{base_url.replace('https', 'wss')}/stream")
+
 
 async def ws_send_tx(ws_client: websockets.ClientConnection, tx_type, tx_info, tx_hash):
     # Note: you have the TX Hash from signing the TX
@@ -67,6 +68,7 @@ async def ws_send_tx(ws_client: websockets.ClientConnection, tx_type, tx_info, t
     )
 
     print(f"expectedHash {tx_hash} response {await ws_client.recv()}")
+
 
 async def ws_send_batch_tx(ws_client: websockets.ClientConnection, tx_types, tx_infos, tx_hashes):
     # Note: you have the TX Hash from signing the TX

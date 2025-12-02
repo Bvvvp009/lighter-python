@@ -1,5 +1,4 @@
 import time
-
 import asyncio
 from utils import default_example_setup
 
@@ -13,8 +12,8 @@ async def main():
         res_tuple = await client.create_order(
             market_index=0,
             client_order_index=123 + i,
-            base_amount=100000 + i,
-            price=385000 + i,
+            base_amount=1000 + i,  # 0.1 ETH + dust
+            price=3850_00 + i,
             is_ask=True,
             order_type=client.ORDER_TYPE_LIMIT,
             time_in_force=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,

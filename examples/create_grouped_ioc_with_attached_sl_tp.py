@@ -1,5 +1,4 @@
 import asyncio
-import lighter
 from lighter.signer_client import CreateOrderTxReq
 from utils import default_example_setup
 
@@ -21,8 +20,8 @@ async def main():
         BaseAmount=1000,  # 0.1 ETH
         Price=2500_00,  # $2500
         IsAsk=1,  # sell
-        Type=lighter.SignerClient.ORDER_TYPE_LIMIT,
-        TimeInForce=lighter.SignerClient.ORDER_TIME_IN_FORCE_IMMEDIATE_OR_CANCEL,
+        Type=client.ORDER_TYPE_LIMIT,
+        TimeInForce=client.ORDER_TIME_IN_FORCE_IMMEDIATE_OR_CANCEL,
         ReduceOnly=0,
         TriggerPrice=0,
         OrderExpiry=0,
@@ -35,8 +34,8 @@ async def main():
         BaseAmount=0,
         Price=1550_00,
         IsAsk=0,
-        Type=lighter.SignerClient.ORDER_TYPE_TAKE_PROFIT_LIMIT,
-        TimeInForce=lighter.SignerClient.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
+        Type=client.ORDER_TYPE_TAKE_PROFIT_LIMIT,
+        TimeInForce=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
         ReduceOnly=1,
         TriggerPrice=1500_00,
         OrderExpiry=-1,
@@ -48,15 +47,15 @@ async def main():
         BaseAmount=0,
         Price=5050_00,
         IsAsk=0,
-        Type=lighter.SignerClient.ORDER_TYPE_STOP_LOSS_LIMIT,
-        TimeInForce=lighter.SignerClient.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
+        Type=client.ORDER_TYPE_STOP_LOSS_LIMIT,
+        TimeInForce=client.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
         ReduceOnly=1,
         TriggerPrice=5000_00,
         OrderExpiry=-1,
     )
 
     transaction = await client.create_grouped_orders(
-        grouping_type=lighter.SignerClient.GROUPING_TYPE_ONE_TRIGGERS_A_ONE_CANCELS_THE_OTHER,
+        grouping_type=client.GROUPING_TYPE_ONE_TRIGGERS_A_ONE_CANCELS_THE_OTHER,
         orders=[ioc_order, take_profit_order, stop_loss_order],
     )
 
@@ -64,6 +63,7 @@ async def main():
 
     await client.close()
     await api_client.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

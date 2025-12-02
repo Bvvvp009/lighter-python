@@ -1,6 +1,5 @@
 import websockets
 import asyncio
-
 from utils import default_example_setup, ws_send_tx
 
 
@@ -32,4 +31,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
