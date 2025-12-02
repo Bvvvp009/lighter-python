@@ -7,11 +7,19 @@ from utils import default_example_setup
 async def main():
     client, api_client, _ = default_example_setup()
 
+    # Sell some ETH at $2500
+    # The size of the SL/TP orders will be equal to the size of the executed order
+
+    # set SL trigger price at 5000 and limit price at 5050
+    # set TP trigger price at 1500 and limit price at 1550
+    # Note: set the limit price to be higher than the SL/TP trigger price to ensure the order will be filled
+    # If the mark price of ETH reaches 1500, there might be no one willing to sell you ETH at 1500, so trying to buy at 1550 would increase the fill rate
+
     ioc_order = CreateOrderTxReq(
         MarketIndex=0,
         ClientOrderIndex=0,
         BaseAmount=1000,  # 0.1 ETH
-        Price=300000,  # $3000
+        Price=2500_00,  # $2500
         IsAsk=1,  # sell
         Type=lighter.SignerClient.ORDER_TYPE_LIMIT,
         TimeInForce=lighter.SignerClient.ORDER_TIME_IN_FORCE_IMMEDIATE_OR_CANCEL,
@@ -25,12 +33,12 @@ async def main():
         MarketIndex=0,
         ClientOrderIndex=0,
         BaseAmount=0,
-        Price=300000,
+        Price=1550_00,
         IsAsk=0,
         Type=lighter.SignerClient.ORDER_TYPE_TAKE_PROFIT_LIMIT,
         TimeInForce=lighter.SignerClient.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
         ReduceOnly=1,
-        TriggerPrice=300000,
+        TriggerPrice=1500_00,
         OrderExpiry=-1,
     )
 
@@ -38,12 +46,12 @@ async def main():
         MarketIndex=0,
         ClientOrderIndex=0,
         BaseAmount=0,
-        Price=500000,
+        Price=5050_00,
         IsAsk=0,
         Type=lighter.SignerClient.ORDER_TYPE_STOP_LOSS_LIMIT,
         TimeInForce=lighter.SignerClient.ORDER_TIME_IN_FORCE_GOOD_TILL_TIME,
         ReduceOnly=1,
-        TriggerPrice=500000,
+        TriggerPrice=5000_00,
         OrderExpiry=-1,
     )
 

@@ -6,7 +6,7 @@ import platform
 import logging
 import os
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union, Any
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -17,6 +17,7 @@ from lighter.errors import ValidationError
 from lighter.models import TxHash
 from lighter import nonce_manager
 from lighter.models.resp_send_tx import RespSendTx
+from lighter.models.resp_send_tx_batch import RespSendTxBatch
 from lighter.transactions import CreateOrder, CancelOrder, Withdraw, CreateGroupedOrders
 
 CODE_OK = 200
@@ -182,13 +183,10 @@ def process_api_key_and_nonce(func):
         bound_args = sig.bind(self, *args, **kwargs)
         bound_args.apply_defaults()
         # Extract api_key_index and nonce from kwargs or use defaults
-        api_key_index = bound_args.arguments.get("api_key_index", -1)
+        api_key_index = bound_args.arguments.get("api_key_index", 255)
         nonce = bound_args.arguments.get("nonce", -1)
-        if api_key_index == -1 and nonce == -1:
+        if api_key_index == 255 and nonce == -1:
             api_key_index, nonce = self.nonce_manager.next_nonce()
-        err = self.switch_api_key(api_key_index)
-        if err is not None:
-            raise Exception(f"error switching api key: {err}")
 
         # Call the original function with modified kwargs
         ret: TxHash
@@ -211,23 +209,10 @@ def process_api_key_and_nonce(func):
 
 
 class SignerClient:
-    USDC_TICKER_SCALE = 1e6
+    DEFAULT_NONCE = -1
+    DEFAULT_API_KEY_INDEX = 255
 
-    TX_TYPE_CHANGE_PUB_KEY = 8
-    TX_TYPE_CREATE_SUB_ACCOUNT = 9
-    TX_TYPE_CREATE_PUBLIC_POOL = 10
-    TX_TYPE_UPDATE_PUBLIC_POOL = 11
-    TX_TYPE_TRANSFER = 12
-    TX_TYPE_WITHDRAW = 13
-    TX_TYPE_CREATE_ORDER = 14
-    TX_TYPE_CANCEL_ORDER = 15
-    TX_TYPE_CANCEL_ALL_ORDERS = 16
-    TX_TYPE_MODIFY_ORDER = 17
-    TX_TYPE_MINT_SHARES = 18
-    TX_TYPE_BURN_SHARES = 19
-    TX_TYPE_UPDATE_LEVERAGE = 20
-    TX_TYPE_CREATE_GROUP_ORDER = 28
-    TX_TYPE_UPDATE_MARGIN = 29
+    USDC_TICKER_SCALE = 1e6
 
     ORDER_TYPE_LIMIT = 0
     ORDER_TYPE_MARKET = 1
@@ -254,6 +239,9 @@ class SignerClient:
     CROSS_MARGIN_MODE = 0
     ISOLATED_MARGIN_MODE = 1
 
+    ISOLATED_MARGIN_REMOVE_COLLATERAL = 0
+    ISOLATED_MARGIN_ADD_COLLATERAL = 1
+
     GROUPING_TYPE_ONE_TRIGGERS_THE_OTHER = 1
     GROUPING_TYPE_ONE_CANCELS_THE_OTHER = 2
     GROUPING_TYPE_ONE_TRIGGERS_A_ONE_CANCELS_THE_OTHER = 3
@@ -261,116 +249,75 @@ class SignerClient:
     def __init__(
             self,
             url,
-            private_key,
-            api_key_index,
             account_index,
-            max_api_key_index=-1,
-            private_keys: Optional[Dict[int, str]] = None,
+            api_private_keys: Dict[int, str],
             nonce_management_type=nonce_manager.NonceManagerType.OPTIMISTIC,
     ):
-        """
-        First private key needs to be passed separately for backwards compatibility.
-        This may get deprecated in a future version.
-        """
-        chain_id = 304 if "mainnet" in url else 300
-
-        # api_key_index=0 is generally used by frontend
-        if private_key.startswith("0x"):
-            private_key = private_key[2:]
         self.url = url
-        self.private_key = private_key
-        self.chain_id = chain_id
-        self.api_key_index = api_key_index
-        if max_api_key_index == -1:
-            self.end_api_key_index = api_key_index
-        else:
-            self.end_api_key_index = max_api_key_index
+        self.chain_id = 304 if "mainnet" in url else 300
 
-        private_keys = private_keys or {}
-        self.validate_api_private_keys(private_key, private_keys)
-        self.api_key_dict = self.build_api_key_dict(private_key, private_keys)
+        self.validate_api_private_keys(api_private_keys)
+        self.api_key_dict = api_private_keys
         self.account_index = account_index
         self.signer = get_signer()
         self.api_client = lighter.ApiClient(configuration=Configuration(host=url))
         self.tx_api = lighter.TransactionApi(self.api_client)
         self.order_api = lighter.OrderApi(self.api_client)
+
         self.nonce_manager = nonce_manager.nonce_manager_factory(
             nonce_manager_type=nonce_management_type,
             account_index=account_index,
             api_client=self.api_client,
-            start_api_key=self.api_key_index,
-            end_api_key=self.end_api_key_index,
+            api_keys_list=list(api_private_keys.keys()),
         )
-        for api_key in range(self.api_key_index, self.end_api_key_index + 1):
-            self.create_client(api_key)
+        for api_key_index in api_private_keys.keys():
+            self.create_client(api_key_index)
 
     # === signer helpers ===
     @staticmethod
-    def __decode_tx_info(tx_type: int, result: SignedTxResponse):
+    def __decode_tx_info(result: SignedTxResponse) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
         if result.err:
             error = result.err.decode("utf-8")
-            return tx_type, None, error
-
+            return None, None, None, error
+        
         # Use txType from response if available, otherwise use the provided type
-        actual_tx_type = result.txType if result.txType else tx_type
+        tx_type = result.txType
         tx_info_str = result.txInfo.decode("utf-8") if result.txInfo else None
-        error = None
+        tx_hash_str = result.txHash.decode("utf-8") if result.txHash else None
 
-        return actual_tx_type, tx_info_str, error
+        return tx_type, tx_info_str, tx_hash_str, None
 
     @staticmethod
-    def __decode_and_sign_tx_info(eth_private_key: str, tx_type: int, result: SignedTxResponse):
+    def __decode_and_sign_tx_info(eth_private_key: str, result: SignedTxResponse) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
         if result.err:
             err = result.err.decode("utf-8")
-            return None, None, err
+            return None, None, None, err
 
-        # Get messageToSign from response struct (may be None for some tx types)
-        msg_to_sign = result.messageToSign.decode("utf-8") if result.messageToSign else None
+        tx_type = result.txType
         tx_info_str = result.txInfo.decode("utf-8") if result.txInfo else None
-
-        if not tx_info_str:
-            return None, None, "no tx info in response"
-
-        # fetch message to sign (either from response or from tx_info JSON)
-        tx_info = json.loads(tx_info_str)
-        if msg_to_sign:
-            # Use messageToSign from response
-            pass
-        elif "MessageToSign" in tx_info:
-            # Fallback to MessageToSign in JSON
-            msg_to_sign = tx_info["MessageToSign"]
-            del tx_info["MessageToSign"]
-        else:
-            return None, None, "no message to sign found"
+        tx_hash_str = result.txHash.decode("utf-8") if result.txHash else None
+        msg_to_sign = result.messageToSign.decode("utf-8") if result.messageToSign else None
 
         # sign the message
         acct = Account.from_key(eth_private_key)
         message = encode_defunct(text=msg_to_sign)
         signature = acct.sign_message(message)
+
+        # add signature to tx_info
+        tx_info = json.loads(tx_info_str)
         tx_info["L1Sig"] = signature.signature.to_0x_hex()
+        return tx_type, json.dumps(tx_info), tx_hash_str, None
 
-        # Use actual txType from response
-        actual_tx_type = result.txType if result.txType else tx_type
-        return actual_tx_type, json.dumps(tx_info), None
+    def validate_api_private_keys(self, private_keys: Dict[int, str]):
+        if len(private_keys) == 0:
+            raise ValidationError("No API keys provided")
 
-    def validate_api_private_keys(self, initial_private_key: str, private_keys: Dict[int, str]):
-        if len(private_keys) == self.end_api_key_index - self.api_key_index + 1:
-            if not self.are_keys_equal(private_keys[self.api_key_index], initial_private_key):
-                raise ValidationError("inconsistent private keys")
-            return  # this is all we need to check in this case
-        if len(private_keys) != self.end_api_key_index - self.api_key_index:
-            raise ValidationError("unexpected number of private keys")
-        for api_key in range(self.api_key_index + 1, self.end_api_key_index):
-            if api_key not in private_keys:
-                raise Exception(f"missing {api_key=} private key!")
+        # trim 0x
+        for api_key_index, private_key in private_keys.items():
+            if private_key.startswith("0x"):
+                private_keys[api_key_index] = private_key[2:]
 
-    def build_api_key_dict(self, private_key, private_keys):
-        if len(private_keys) == self.end_api_key_index - self.api_key_index:
-            private_keys[self.api_key_index] = private_key
-        return private_keys
-
-    def create_client(self, api_key_index=None):
-        api_key_index = api_key_index or self.api_key_index
+    def create_client(self, api_key_index):
         err = self.signer.CreateClient(
             self.url.encode("utf-8"),
             self.api_key_dict[api_key_index].encode("utf-8"),
@@ -398,16 +345,10 @@ class SignerClient:
 
     # check_client verifies that the given API key associated with (api_key_index, account_index) matches the one on Lighter
     def check_client(self):
-        for api_key in range(self.api_key_index, self.end_api_key_index + 1):
+        for api_key in self.api_key_dict.keys():
             err = self.__signer_check_client(api_key, self.account_index)
             if err is not None:
-                return err + f" on api key {self.api_key_index}"
-        return None
-
-    def switch_api_key(self, api_key: int):
-        # SwitchAPIKey is no longer exported in the new binary
-        # All functions now take api_key_index directly, so switching is handled via parameters
-        # This function is kept for backward compatibility but does nothing
+                return err + f" on api key {api_key}"
         return None
 
     @staticmethod
@@ -415,43 +356,44 @@ class SignerClient:
         return create_api_key(seed=seed)
 
     def get_api_key_nonce(self, api_key_index: int, nonce: int) -> Tuple[int, int]:
-        if api_key_index != -1 and nonce != -1:
+        if api_key_index != self.DEFAULT_API_KEY_INDEX and nonce != self.DEFAULT_NONCE:
             return api_key_index, nonce
-        if nonce != -1:
-            if self.api_key_index == self.end_api_key_index:
+
+        if nonce != self.DEFAULT_NONCE:
+            if len(self.api_key_dict) == 1:
                 return self.nonce_manager.next_nonce()
             else:
                 raise Exception("ambiguous api key")
         return self.nonce_manager.next_nonce()
 
-    def create_auth_token_with_expiry(self, deadline: int = DEFAULT_10_MIN_AUTH_EXPIRY, *, timestamp: int = None):
+    def create_auth_token_with_expiry(self, deadline: int = DEFAULT_10_MIN_AUTH_EXPIRY, *, timestamp: int = None, api_key_index: int = DEFAULT_API_KEY_INDEX):
         if deadline == SignerClient.DEFAULT_10_MIN_AUTH_EXPIRY:
             deadline = 10 * SignerClient.MINUTE
         if timestamp is None:
             timestamp = int(time.time())
 
-        result = self.signer.CreateAuthToken(deadline+timestamp, self.api_key_index, self.account_index)
+        result = self.signer.CreateAuthToken(deadline+timestamp, api_key_index, self.account_index)
 
         auth = result.str.decode("utf-8") if result.str else None
         error = result.err.decode("utf-8") if result.err else None
         return auth, error
 
-    def sign_change_api_key(self, eth_private_key: str, new_pubkey: str, nonce: int = -1):
-        return self.__decode_and_sign_tx_info(eth_private_key, self.TX_TYPE_CHANGE_PUB_KEY, self.signer.SignChangePubKey(
+    def sign_change_api_key(self, eth_private_key: str, new_pubkey: str, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_and_sign_tx_info(eth_private_key, self.signer.SignChangePubKey(
             ctypes.c_char_p(new_pubkey.encode("utf-8")),
             nonce,
-            self.api_key_index,
+            api_key_index,
             self.account_index
         ))
 
-    async def change_api_key(self, eth_private_key: str, new_pubkey: str, nonce=-1):
-        tx_type, tx_info, error = self.sign_change_api_key(eth_private_key, new_pubkey, nonce)
+    async def change_api_key(self, eth_private_key: str, new_pubkey: str, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX):
+        tx_type, tx_info, tx_hash, error = self.sign_change_api_key(eth_private_key, new_pubkey, nonce, api_key_index)
         if error is not None:
             return None, error
 
-        logging.debug(f"Change Pub Key Tx Info: {tx_info}")
+        logging.debug(f"Change Pub Key TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Change Pub Key Send Tx Response: {api_response}")
+        logging.debug(f"Change Pub Key Send. TxResponse: {api_response}")
         return api_response, None
 
     def sign_create_order(
@@ -466,9 +408,10 @@ class SignerClient:
             reduce_only=False,
             trigger_price=NIL_TRIGGER_PRICE,
             order_expiry=DEFAULT_28_DAY_ORDER_EXPIRY,
-            nonce=-1,
-    ):
-        return self.__decode_tx_info(self.TX_TYPE_CREATE_ORDER, self.signer.SignCreateOrder(
+            nonce: int = DEFAULT_NONCE,
+            api_key_index: int = DEFAULT_API_KEY_INDEX
+    ) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignCreateOrder(
             market_index,
             client_order_index,
             base_amount,
@@ -480,7 +423,7 @@ class SignerClient:
             trigger_price,
             order_expiry,
             nonce,
-            self.api_key_index,
+            api_key_index,
             self.account_index,
         ))
 
@@ -488,54 +431,51 @@ class SignerClient:
             self,
             grouping_type: int,
             orders: List[CreateOrderTxReq],
-            nonce: int = -1,
-    ):
+            nonce: int = DEFAULT_NONCE,
+            api_key_index=DEFAULT_API_KEY_INDEX
+    ) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
         arr_type = CreateOrderTxReq * len(orders)
         orders_arr = arr_type(*orders)
 
-        return self.__decode_tx_info(self.TX_TYPE_CREATE_GROUP_ORDER, self.signer.SignCreateGroupedOrders(
-            grouping_type, orders_arr, len(orders), nonce, self.api_key_index, self.account_index
+        return self.__decode_tx_info(self.signer.SignCreateGroupedOrders(
+            grouping_type, orders_arr, len(orders), nonce, api_key_index, self.account_index
         ))
 
-    def sign_cancel_order(self, market_index: int, order_index: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_CANCEL_ORDER, self.signer.SignCancelOrder(market_index, order_index, nonce, self.api_key_index, self.account_index))
+    def sign_cancel_order(self, market_index: int, order_index: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignCancelOrder(market_index, order_index, nonce, api_key_index, self.account_index))
 
-    def sign_withdraw(self, usdc_amount: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_WITHDRAW, self.signer.SignWithdraw(usdc_amount, nonce, self.api_key_index, self.account_index))
+    def sign_withdraw(self, usdc_amount: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignWithdraw(usdc_amount, nonce, api_key_index, self.account_index))
 
-    def sign_create_sub_account(self, nonce=-1):
-        return self.__decode_tx_info(self.TX_TYPE_CREATE_SUB_ACCOUNT, self.signer.SignCreateSubAccount(nonce, self.api_key_index, self.account_index))
+    def sign_create_sub_account(self, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignCreateSubAccount(nonce, api_key_index, self.account_index))
 
-    def sign_cancel_all_orders(self, time_in_force: int, timestamp_ms: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_CANCEL_ALL_ORDERS, self.signer.SignCancelAllOrders(time_in_force, timestamp_ms, nonce, self.api_key_index, self.account_index))
+    def sign_cancel_all_orders(self, time_in_force: int, timestamp_ms: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignCancelAllOrders(time_in_force, timestamp_ms, nonce, api_key_index, self.account_index))
 
-    def sign_modify_order(self, market_index: int, order_index: int, base_amount: int, price: int, trigger_price: int = NIL_TRIGGER_PRICE, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_MODIFY_ORDER,
-                                     self.signer.SignModifyOrder(market_index, order_index, base_amount, price, trigger_price, nonce, self.api_key_index, self.account_index))
+    def sign_modify_order(self, market_index: int, order_index: int, base_amount: int, price: int, trigger_price: int = NIL_TRIGGER_PRICE, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignModifyOrder(market_index, order_index, base_amount, price, trigger_price, nonce, api_key_index, self.account_index))
 
-    def sign_transfer(self, eth_private_key: str, to_account_index: int, usdc_amount: int, fee: int, memo: str, nonce: int = -1):
-        return self.__decode_and_sign_tx_info(eth_private_key, self.TX_TYPE_TRANSFER,
-                                              self.signer.SignTransfer(to_account_index, usdc_amount, fee, ctypes.c_char_p(memo.encode("utf-8")), nonce, self.api_key_index, self.account_index))
+    def sign_transfer(self, eth_private_key: str, to_account_index: int, usdc_amount: int, fee: int, memo: str, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_and_sign_tx_info(eth_private_key, self.signer.SignTransfer(to_account_index,usdc_amount,fee,ctypes.c_char_p(memo.encode("utf-8")),nonce,api_key_index,self.account_index))
 
-    def sign_create_public_pool(self, operator_fee: int, initial_total_shares: int, min_operator_share_rate: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_CREATE_PUBLIC_POOL,
-                                     self.signer.SignCreatePublicPool(operator_fee, initial_total_shares, min_operator_share_rate, nonce, self.api_key_index, self.account_index))
+    def sign_create_public_pool(self, operator_fee: int, initial_total_shares: int, min_operator_share_rate: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignCreatePublicPool(operator_fee, initial_total_shares, min_operator_share_rate, nonce, api_key_index, self.account_index))
 
-    def sign_update_public_pool(self, public_pool_index: int, status: int, operator_fee: int, min_operator_share_rate: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_UPDATE_PUBLIC_POOL,
-                                     self.signer.SignUpdatePublicPool(public_pool_index, status, operator_fee, min_operator_share_rate, nonce, self.api_key_index, self.account_index))
+    def sign_update_public_pool(self, public_pool_index: int, status: int, operator_fee: int, min_operator_share_rate: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignUpdatePublicPool(public_pool_index, status, operator_fee, min_operator_share_rate, nonce, api_key_index, self.account_index))
 
-    def sign_mint_shares(self, public_pool_index: int, share_amount: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_MINT_SHARES, self.signer.SignMintShares(public_pool_index, share_amount, nonce, self.api_key_index, self.account_index))
+    def sign_mint_shares(self, public_pool_index: int, share_amount: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignMintShares(public_pool_index, share_amount, nonce, api_key_index, self.account_index))
 
-    def sign_burn_shares(self, public_pool_index: int, share_amount: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_BURN_SHARES, self.signer.SignBurnShares(public_pool_index, share_amount, nonce, self.api_key_index, self.account_index))
+    def sign_burn_shares(self, public_pool_index: int, share_amount: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignBurnShares(public_pool_index, share_amount, nonce, api_key_index, self.account_index))
 
-    def sign_update_leverage(self, market_index: int, fraction: int, margin_mode: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_UPDATE_LEVERAGE, self.signer.SignUpdateLeverage(market_index, fraction, margin_mode, nonce, self.api_key_index, self.account_index))
+    def sign_update_leverage(self, market_index: int, fraction: int, margin_mode: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignUpdateLeverage(market_index, fraction, margin_mode, nonce, api_key_index, self.account_index))
 
-    def sign_update_margin(self, market_index: int, usdc_amount: int, direction: int, nonce: int = -1):
-        return self.__decode_tx_info(self.TX_TYPE_UPDATE_MARGIN, self.signer.SignUpdateMargin(market_index, usdc_amount, direction, nonce, self.api_key_index, self.account_index))
+    def sign_update_margin(self, market_index: int, usdc_amount: int, direction: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[str, str, str, None], Tuple[None, None, None, str]]:
+        return self.__decode_tx_info(self.signer.SignUpdateMargin(market_index, usdc_amount, direction, nonce, api_key_index, self.account_index))
 
     @process_api_key_and_nonce
     async def create_order(
@@ -550,10 +490,10 @@ class SignerClient:
             reduce_only=False,
             trigger_price=NIL_TRIGGER_PRICE,
             order_expiry=DEFAULT_28_DAY_ORDER_EXPIRY,
-            nonce=-1,
-            api_key_index=-1,
-    ) -> (CreateOrder, TxHash, str):
-        tx_type, tx_info, error = self.sign_create_order(
+            nonce: int = DEFAULT_NONCE,
+            api_key_index: int = DEFAULT_API_KEY_INDEX
+    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+        tx_type, tx_info, tx_hash, error = self.sign_create_order(
             market_index,
             client_order_index,
             base_amount,
@@ -561,17 +501,18 @@ class SignerClient:
             int(is_ask),
             order_type,
             time_in_force,
-            int(reduce_only),
+            reduce_only,
             trigger_price,
             order_expiry,
             nonce,
+            api_key_index,
         )
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Create Order Tx Info: {tx_info}")
+        logging.debug(f"Create Order TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Create Order Send Tx Response: {api_response}")
+        logging.debug(f"Create Order Send. TxResponse: {api_response}")
         return CreateOrder.from_json(tx_info), api_response, None
 
     @process_api_key_and_nonce
@@ -579,20 +520,21 @@ class SignerClient:
             self,
             grouping_type: int,
             orders: List[CreateOrderTxReq],
-            nonce=-1,
-            api_key_index=-1,
-    ) -> (CreateGroupedOrders, TxHash, str):
-        tx_type, tx_info, error = self.sign_create_grouped_orders(
+            nonce: int = DEFAULT_NONCE,
+            api_key_index: int = DEFAULT_API_KEY_INDEX
+    ) ->Union[tuple[CreateGroupedOrders, RespSendTx, None], tuple[None, None, str]]:
+        tx_type, tx_info, tx_hash, error = self.sign_create_grouped_orders(
             grouping_type,
             orders,
             nonce,
+            api_key_index
         )
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Create Grouped Orders Tx Info: {tx_info}")
+        logging.debug(f"Create Grouped Orders TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Create Grouped Orders Send Tx Response: {api_response}")
+        logging.debug(f"Create Grouped Orders Send. TxResponse: {api_response}")
         return CreateGroupedOrders.from_json(tx_info), api_response, None
 
     async def create_market_order(
@@ -603,9 +545,9 @@ class SignerClient:
             avg_execution_price,
             is_ask,
             reduce_only: bool = False,
-            nonce=-1,
-            api_key_index=-1,
-    ) -> (CreateOrder, TxHash, str):
+            nonce: int = DEFAULT_NONCE,
+            api_key_index: int = DEFAULT_API_KEY_INDEX
+    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -629,10 +571,10 @@ class SignerClient:
             max_slippage,
             is_ask,
             reduce_only: bool = False,
-            nonce=-1,
-            api_key_index=-1,
+            nonce: int = DEFAULT_NONCE,
+            api_key_index: int = DEFAULT_API_KEY_INDEX,
             ideal_price=None
-    ) -> (CreateOrder, TxHash, str):
+    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
         if ideal_price is None:
             order_book_orders = await self.order_api.order_book_orders(market_index, 1)
             logging.debug(
@@ -663,10 +605,10 @@ class SignerClient:
             max_slippage,
             is_ask,
             reduce_only: bool = False,
-            nonce=-1,
-            api_key_index=-1,
+            nonce: int = DEFAULT_NONCE,
+            api_key_index: int = DEFAULT_API_KEY_INDEX,
             ideal_price=None
-    ) -> (CreateOrder, TxHash, str):
+    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
         order_book_orders = await self.order_api.order_book_orders(market_index, 100)
         if ideal_price is None:
             ideal_price = int((order_book_orders.bids[0].price if is_ask else order_book_orders.asks[0].price).replace(".", ""))
@@ -704,19 +646,22 @@ class SignerClient:
         )
 
     @process_api_key_and_nonce
-    async def cancel_order(self, market_index, order_index, nonce=-1, api_key_index=-1) -> (CancelOrder, TxHash, str):
-        tx_type, tx_info, error = self.sign_cancel_order(market_index, order_index, nonce)
+    async def cancel_order(self, market_index, order_index, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX
+                           ) -> Union[tuple[CancelOrder, RespSendTx, None], tuple[None, None, str]]:
+        tx_type, tx_info, tx_hash, error = self.sign_cancel_order(market_index, order_index, nonce, api_key_index)
 
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Cancel Order Tx Info: {tx_info}")
+        logging.debug(f"Cancel Order TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Cancel Order Send Tx Response: {api_response}")
+        logging.debug(f"Cancel Order Send. TxResponse: {api_response}")
         return CancelOrder.from_json(tx_info), api_response, None
 
-    async def create_tp_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False, nonce=-1,
-                              api_key_index=-1) -> (CreateOrder, TxHash, str):
+    async def create_tp_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False,
+                              nonce: int = DEFAULT_NONCE,
+                              api_key_index: int = DEFAULT_API_KEY_INDEX
+                              ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -729,11 +674,13 @@ class SignerClient:
             trigger_price,
             self.DEFAULT_28_DAY_ORDER_EXPIRY,
             nonce,
-            api_key_index=api_key_index,
+            api_key_index,
         )
 
-    async def create_tp_limit_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False, nonce=-1,
-                                    api_key_index=-1) -> (CreateOrder, TxHash, str):
+    async def create_tp_limit_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False,
+                                    nonce: int = DEFAULT_NONCE,
+                                    api_key_index: int = DEFAULT_API_KEY_INDEX
+                                    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -749,8 +696,10 @@ class SignerClient:
             api_key_index,
         )
 
-    async def create_sl_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False, nonce=-1,
-                              api_key_index=-1) -> (CreateOrder, TxHash, str):
+    async def create_sl_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False,
+                              nonce: int = DEFAULT_NONCE,
+                              api_key_index: int = DEFAULT_API_KEY_INDEX
+                              ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -763,11 +712,13 @@ class SignerClient:
             trigger_price,
             self.DEFAULT_28_DAY_ORDER_EXPIRY,
             nonce,
-            api_key_index=api_key_index,
+            api_key_index,
         )
 
-    async def create_sl_limit_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False, nonce=-1,
-                                    api_key_index=-1) -> (CreateOrder, TxHash, str):
+    async def create_sl_limit_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False,
+                                    nonce: int = DEFAULT_NONCE,
+                                    api_key_index: int = DEFAULT_API_KEY_INDEX
+                                    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -784,139 +735,139 @@ class SignerClient:
         )
 
     @process_api_key_and_nonce
-    async def withdraw(self, usdc_amount, nonce=-1, api_key_index=-1) -> (Withdraw, TxHash):
+    async def withdraw(self, usdc_amount, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX) -> Union[Tuple[Withdraw, RespSendTx, None], Tuple[None, None, str]]:
         usdc_amount = int(usdc_amount * self.USDC_TICKER_SCALE)
 
-        tx_type, tx_info, error = self.sign_withdraw(usdc_amount, nonce)
+        tx_type, tx_info, tx_hash, error = self.sign_withdraw(usdc_amount, nonce, api_key_index)
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Withdraw Tx Info: {tx_info}")
+        logging.debug(f"Withdraw TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Withdraw Send Tx Response: {api_response}")
+        logging.debug(f"Withdraw Send. TxResponse: {api_response}")
         return Withdraw.from_json(tx_info), api_response, None
 
-    async def create_sub_account(self, nonce=-1):
-        tx_type, tx_info, error = self.sign_create_sub_account(nonce)
+    async def create_sub_account(self, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX):
+        tx_type, tx_info, tx_hash, error = self.sign_create_sub_account(nonce, api_key_index)
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Create Sub Account Tx Info: {tx_info}")
+        logging.debug(f"Create Sub Account TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Create Sub Account Send Tx Response: {api_response}")
+        logging.debug(f"Create Sub Account Send. TxResponse: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
-    async def cancel_all_orders(self, time_in_force, timestamp_ms, nonce=-1, api_key_index=-1):
-        tx_type, tx_info, error = self.sign_cancel_all_orders(time_in_force, timestamp_ms, nonce)
+    async def cancel_all_orders(self, time_in_force, timestamp_ms, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX)-> Union[Tuple[Withdraw, RespSendTx, None], Tuple[None, None, str]]:
+        tx_type, tx_info, tx_hash, error = self.sign_cancel_all_orders(time_in_force, timestamp_ms, nonce, api_key_index)
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Cancel All Orders Tx Info: {tx_info}")
+        logging.debug(f"Cancel All Orders TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Cancel All Orders Send Tx Response: {api_response}")
+        logging.debug(f"Cancel All Orders Send. TxResponse: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
     async def modify_order(
-            self, market_index, order_index, base_amount, price, trigger_price=NIL_TRIGGER_PRICE, nonce=-1, api_key_index=-1
+            self, market_index, order_index, base_amount, price, trigger_price=NIL_TRIGGER_PRICE, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX
     ):
-        tx_type, tx_info, error = self.sign_modify_order(market_index, order_index, base_amount, price, trigger_price, nonce)
+        tx_type, tx_info, tx_hash, error = self.sign_modify_order(market_index, order_index, base_amount, price, trigger_price, nonce, api_key_index)
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Modify Order Tx Info: {tx_info}")
+        logging.debug(f"Modify Order TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Modify Order Send Tx Response: {api_response}")
+        logging.debug(f"Modify Order Send. TxResponse: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
-    async def transfer(self, eth_private_key: str, to_account_index, usdc_amount, fee, memo, nonce=-1, api_key_index=-1):
+    async def transfer(self, eth_private_key: str, to_account_index, usdc_amount, fee, memo, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX):
         usdc_amount = int(usdc_amount * self.USDC_TICKER_SCALE)
 
-        tx_type, tx_info, error = self.sign_transfer(eth_private_key, to_account_index, usdc_amount, fee, memo, nonce)
+        tx_type, tx_info, tx_hash, error = self.sign_transfer(eth_private_key, to_account_index, usdc_amount, fee, memo, nonce, api_key_index)
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Transfer Tx Info: {tx_info}")
+        logging.debug(f"Transfer TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Transfer Send Tx Response: {api_response}")
+        logging.debug(f"Transfer Send. TxResponse: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
     async def create_public_pool(
-            self, operator_fee, initial_total_shares, min_operator_share_rate, nonce=-1, api_key_index=-1
+            self, operator_fee, initial_total_shares, min_operator_share_rate, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX
     ):
-        tx_type, tx_info, error = self.sign_create_public_pool(
-            operator_fee, initial_total_shares, min_operator_share_rate, nonce
+        tx_type, tx_info, tx_hash, error = self.sign_create_public_pool(
+            operator_fee, initial_total_shares, min_operator_share_rate, nonce, api_key_index
         )
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Create Public Pool Tx Info: {tx_info}")
+        logging.debug(f"Create Public Pool TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Create Public Pool Send Tx Response: {api_response}")
+        logging.debug(f"Create Public Pool Send. TxResponse: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
     async def update_public_pool(
-            self, public_pool_index, status, operator_fee, min_operator_share_rate, nonce=-1, api_key_index=-1
+            self, public_pool_index, status, operator_fee, min_operator_share_rate, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX
     ):
-        tx_type, tx_info, error = self.sign_update_public_pool(
-            public_pool_index, status, operator_fee, min_operator_share_rate, nonce
+        tx_type, tx_info, tx_hash, error = self.sign_update_public_pool(
+            public_pool_index, status, operator_fee, min_operator_share_rate, nonce, api_key_index
         )
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Update Public Pool Tx Info: {tx_info}")
+        logging.debug(f"Update Public Pool TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Update Public Pool Send Tx Response: {api_response}")
+        logging.debug(f"Update Public Pool Send. TxResponse: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
-    async def mint_shares(self, public_pool_index, share_amount, nonce=-1, api_key_index=-1):
-        tx_type, tx_info, error = self.sign_mint_shares(public_pool_index, share_amount, nonce)
+    async def mint_shares(self, public_pool_index, share_amount, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX):
+        tx_type, tx_info, tx_hash, error = self.sign_mint_shares(public_pool_index, share_amount, nonce, api_key_index)
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Mint Shares Tx Info: {tx_info}")
+        logging.debug(f"Mint Shares TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Mint Shares Send Tx Response: {api_response}")
+        logging.debug(f"Mint Shares Send. TxResponse: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
-    async def burn_shares(self, public_pool_index, share_amount, nonce=-1, api_key_index=-1):
-        tx_type, tx_info, error = self.sign_burn_shares(public_pool_index, share_amount, nonce)
+    async def burn_shares(self, public_pool_index, share_amount, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX):
+        tx_type, tx_info, tx_hash, error = self.sign_burn_shares(public_pool_index, share_amount, nonce, api_key_index)
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Burn Shares Tx Info: {tx_info}")
+        logging.debug(f"Burn Shares TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
-        logging.debug(f"Burn Shares Send Tx Response: {api_response}")
+        logging.debug(f"Burn Shares Send. TxResponse: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
-    async def update_leverage(self, market_index, margin_mode, leverage, nonce=-1, api_key_index=-1):
+    async def update_leverage(self, market_index, margin_mode, leverage, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX):
         imf = int(10_000 / leverage)
-        tx_type, tx_info, error = self.sign_update_leverage(market_index, imf, margin_mode, nonce)
+        tx_type, tx_info, tx_hash, error = self.sign_update_leverage(market_index, imf, margin_mode, nonce, api_key_index)
 
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Update Leverage Tx Info: {tx_info}")
+        logging.debug(f"Update Leverage TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
         logging.debug(f"Update Leverage Tx Response: {api_response}")
         return tx_info, api_response, None
 
     @process_api_key_and_nonce
-    async def update_margin(self, market_index: int, usdc_amount: float, direction: int, nonce: int = -1):
+    async def update_margin(self, market_index: int, usdc_amount: float, direction: int, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX):
         usdc_amount = int(usdc_amount * self.USDC_TICKER_SCALE)
-        tx_type, tx_info, error = self.sign_update_margin(market_index, usdc_amount, direction, nonce)
+        tx_type, tx_info, tx_hash, error = self.sign_update_margin(market_index, usdc_amount, direction, nonce, api_key_index)
 
         if error is not None:
             return None, None, error
 
-        logging.debug(f"Update Margin Tx Info: {tx_info}")
+        logging.debug(f"Update Margin TxHash: {tx_hash} TxInfo: {tx_info}")
         api_response = await self.send_tx(tx_type=tx_type, tx_info=tx_info)
         logging.debug(f"Update Margin Tx Response: {api_response}")
         return tx_info, api_response, None
@@ -925,6 +876,16 @@ class SignerClient:
         if tx_info[0] != "{":
             raise Exception(tx_info)
         return await self.tx_api.send_tx(tx_type=tx_type, tx_info=tx_info)
+
+    async def send_tx_batch(self, tx_types: List[StrictInt], tx_infos: List[str]) -> RespSendTxBatch:
+        if len(tx_types) != len(tx_infos):
+            raise Exception("Tx types and tx infos must be of same length")
+        if len(tx_types) == 0:
+            raise Exception("Empty tx types and tx infos")
+
+        if tx_infos[0][0] != "{":
+            raise Exception(tx_infos)
+        return await self.tx_api.send_tx_batch(tx_types=json.dumps(tx_types), tx_infos=json.dumps(tx_infos))
 
     async def close(self):
         await self.api_client.close()
