@@ -6,7 +6,7 @@ import platform
 import logging
 import os
 import time
-from typing import Dict, List, Optional, Tuple, Union, Any
+from typing import Dict, List, Optional, Tuple, Union, Tuple
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
@@ -492,7 +492,7 @@ class SignerClient:
             order_expiry=DEFAULT_28_DAY_ORDER_EXPIRY,
             nonce: int = DEFAULT_NONCE,
             api_key_index: int = DEFAULT_API_KEY_INDEX
-    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+    ) -> Union[Tuple[CreateOrder, RespSendTx, None], Tuple[None, None, str]]:
         tx_type, tx_info, tx_hash, error = self.sign_create_order(
             market_index,
             client_order_index,
@@ -522,7 +522,7 @@ class SignerClient:
             orders: List[CreateOrderTxReq],
             nonce: int = DEFAULT_NONCE,
             api_key_index: int = DEFAULT_API_KEY_INDEX
-    ) ->Union[tuple[CreateGroupedOrders, RespSendTx, None], tuple[None, None, str]]:
+    ) ->Union[Tuple[CreateGroupedOrders, RespSendTx, None], Tuple[None, None, str]]:
         tx_type, tx_info, tx_hash, error = self.sign_create_grouped_orders(
             grouping_type,
             orders,
@@ -547,7 +547,7 @@ class SignerClient:
             reduce_only: bool = False,
             nonce: int = DEFAULT_NONCE,
             api_key_index: int = DEFAULT_API_KEY_INDEX
-    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+    ) -> Union[Tuple[CreateOrder, RespSendTx, None], Tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -574,7 +574,7 @@ class SignerClient:
             nonce: int = DEFAULT_NONCE,
             api_key_index: int = DEFAULT_API_KEY_INDEX,
             ideal_price=None
-    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+    ) -> Union[Tuple[CreateOrder, RespSendTx, None], Tuple[None, None, str]]:
         if ideal_price is None:
             order_book_orders = await self.order_api.order_book_orders(market_index, 1)
             logging.debug(
@@ -608,7 +608,7 @@ class SignerClient:
             nonce: int = DEFAULT_NONCE,
             api_key_index: int = DEFAULT_API_KEY_INDEX,
             ideal_price=None
-    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+    ) -> Union[Tuple[CreateOrder, RespSendTx, None], Tuple[None, None, str]]:
         order_book_orders = await self.order_api.order_book_orders(market_index, 100)
         if ideal_price is None:
             ideal_price = int((order_book_orders.bids[0].price if is_ask else order_book_orders.asks[0].price).replace(".", ""))
@@ -647,7 +647,7 @@ class SignerClient:
 
     @process_api_key_and_nonce
     async def cancel_order(self, market_index, order_index, nonce: int = DEFAULT_NONCE, api_key_index: int = DEFAULT_API_KEY_INDEX
-                           ) -> Union[tuple[CancelOrder, RespSendTx, None], tuple[None, None, str]]:
+                           ) -> Union[Tuple[CancelOrder, RespSendTx, None], Tuple[None, None, str]]:
         tx_type, tx_info, tx_hash, error = self.sign_cancel_order(market_index, order_index, nonce, api_key_index)
 
         if error is not None:
@@ -661,7 +661,7 @@ class SignerClient:
     async def create_tp_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False,
                               nonce: int = DEFAULT_NONCE,
                               api_key_index: int = DEFAULT_API_KEY_INDEX
-                              ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+                              ) -> Union[Tuple[CreateOrder, RespSendTx, None], Tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -680,7 +680,7 @@ class SignerClient:
     async def create_tp_limit_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False,
                                     nonce: int = DEFAULT_NONCE,
                                     api_key_index: int = DEFAULT_API_KEY_INDEX
-                                    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+                                    ) -> Union[Tuple[CreateOrder, RespSendTx, None], Tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -699,7 +699,7 @@ class SignerClient:
     async def create_sl_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False,
                               nonce: int = DEFAULT_NONCE,
                               api_key_index: int = DEFAULT_API_KEY_INDEX
-                              ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+                              ) -> Union[Tuple[CreateOrder, RespSendTx, None], Tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
@@ -718,7 +718,7 @@ class SignerClient:
     async def create_sl_limit_order(self, market_index, client_order_index, base_amount, trigger_price, price, is_ask, reduce_only=False,
                                     nonce: int = DEFAULT_NONCE,
                                     api_key_index: int = DEFAULT_API_KEY_INDEX
-                                    ) -> Union[tuple[CreateOrder, RespSendTx, None], tuple[None, None, str]]:
+                                    ) -> Union[Tuple[CreateOrder, RespSendTx, None], Tuple[None, None, str]]:
         return await self.create_order(
             market_index,
             client_order_index,
