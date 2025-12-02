@@ -6,7 +6,7 @@ import platform
 import logging
 import os
 import time
-from typing import Dict, List, Optional, Tuple, Union, Tuple
+from typing import Dict, List, Optional, Union, Tuple
 
 from eth_account import Account
 from eth_account.messages import encode_defunct
