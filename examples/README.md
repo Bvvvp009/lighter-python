@@ -25,7 +25,7 @@
   - the size of the SL/TP will be equal to the executed size of the order
   - the SL/TP orders are canceled when the sign of your position changes
 
-- `create_position_tied_sl_tl.py`
+- `create_position_tied_sl_tp.py`
   - creates a bid (buy) Stop Loss (SL) and a Take Profit (TP) to close your short position
   - the size of the orders will be for your whole position (because BaseAmount=0)
   - the orders will grow / shrink as you accumulate more position
