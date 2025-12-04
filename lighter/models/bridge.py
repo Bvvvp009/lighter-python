@@ -17,22 +17,46 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Optional
-from lighter.models.public_pool import PublicPool
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr, field_validator
+from typing import Any, ClassVar, Dict, List
 from typing import Optional, Set
 from typing_extensions import Self
 
-class PublicPools(BaseModel):
+class Bridge(BaseModel):
     """
-    PublicPools
+    Bridge
     """ # noqa: E501
-    code: StrictInt
-    message: Optional[StrictStr] = None
-    total: StrictInt
-    public_pools: List[PublicPool]
+    id: StrictInt
+    version: StrictInt
+    source: StrictStr
+    source_chain_id: StrictStr
+    fast_bridge_tx_hash: StrictStr
+    batch_claim_tx_hash: StrictStr
+    cctp_burn_tx_hash: StrictStr
+    amount: StrictStr
+    intent_address: StrictStr
+    status: StrictStr
+    step: StrictStr
+    description: StrictStr
+    created_at: StrictInt
+    updated_at: StrictInt
+    is_external_deposit: StrictBool
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["code", "message", "total", "public_pools"]
+    __properties: ClassVar[List[str]] = ["id", "version", "source", "source_chain_id", "fast_bridge_tx_hash", "batch_claim_tx_hash", "cctp_burn_tx_hash", "amount", "intent_address", "status", "step", "description", "created_at", "updated_at", "is_external_deposit"]
+
+    @field_validator('version')
+    def version_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set([1, 2]):
+            raise ValueError("must be one of enum values (1, 2)")
+        return value
+
+    @field_validator('status')
+    def status_validate_enum(cls, value):
+        """Validates the enum"""
+        if value not in set(['pending', 'bridging', 'completed']):
+            raise ValueError("must be one of enum values ('pending', 'bridging', 'completed')")
+        return value
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -52,7 +76,7 @@ class PublicPools(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of PublicPools from a JSON string"""
+        """Create an instance of Bridge from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -75,13 +99,6 @@ class PublicPools(BaseModel):
             exclude=excluded_fields,
             exclude_none=True,
         )
-        # override the default output from pydantic by calling `to_dict()` of each item in public_pools (list)
-        _items = []
-        if self.public_pools:
-            for _item in self.public_pools:
-                if _item:
-                    _items.append(_item.to_dict())
-            _dict['public_pools'] = _items
         # puts key-value pairs in additional_properties in the top level
         if self.additional_properties is not None:
             for _key, _value in self.additional_properties.items():
@@ -91,7 +108,7 @@ class PublicPools(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of PublicPools from a dict"""
+        """Create an instance of Bridge from a dict"""
         if obj is None:
             return None
 
@@ -99,10 +116,21 @@ class PublicPools(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "code": obj.get("code"),
-            "message": obj.get("message"),
-            "total": obj.get("total"),
-            "public_pools": [PublicPool.from_dict(_item) for _item in obj["public_pools"]] if obj.get("public_pools") is not None else None
+            "id": obj.get("id"),
+            "version": obj.get("version"),
+            "source": obj.get("source"),
+            "source_chain_id": obj.get("source_chain_id"),
+            "fast_bridge_tx_hash": obj.get("fast_bridge_tx_hash"),
+            "batch_claim_tx_hash": obj.get("batch_claim_tx_hash"),
+            "cctp_burn_tx_hash": obj.get("cctp_burn_tx_hash"),
+            "amount": obj.get("amount"),
+            "intent_address": obj.get("intent_address"),
+            "status": obj.get("status"),
+            "step": obj.get("step"),
+            "description": obj.get("description"),
+            "created_at": obj.get("created_at"),
+            "updated_at": obj.get("updated_at"),
+            "is_external_deposit": obj.get("is_external_deposit")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

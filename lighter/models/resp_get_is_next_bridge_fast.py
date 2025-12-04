@@ -17,30 +17,20 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictFloat, StrictInt, StrictStr
-from typing import Any, ClassVar, Dict, List, Union
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr
+from typing import Any, ClassVar, Dict, List, Optional
 from typing import Optional, Set
 from typing_extensions import Self
 
-class MarketInfo(BaseModel):
+class RespGetIsNextBridgeFast(BaseModel):
     """
-    MarketInfo
+    RespGetIsNextBridgeFast
     """ # noqa: E501
-    market_id: StrictInt
-    index_price: StrictStr
-    mark_price: StrictStr
-    open_interest: StrictStr
-    last_trade_price: StrictStr
-    current_funding_rate: StrictStr
-    funding_rate: StrictStr
-    funding_timestamp: StrictInt
-    daily_base_token_volume: Union[StrictFloat, StrictInt]
-    daily_quote_token_volume: Union[StrictFloat, StrictInt]
-    daily_price_low: Union[StrictFloat, StrictInt]
-    daily_price_high: Union[StrictFloat, StrictInt]
-    daily_price_change: Union[StrictFloat, StrictInt]
+    code: StrictInt
+    message: Optional[StrictStr] = None
+    is_next_bridge_fast: StrictBool
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["market_id", "index_price", "mark_price", "open_interest", "last_trade_price", "current_funding_rate", "funding_rate", "funding_timestamp", "daily_base_token_volume", "daily_quote_token_volume", "daily_price_low", "daily_price_high", "daily_price_change"]
+    __properties: ClassVar[List[str]] = ["code", "message", "is_next_bridge_fast"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -60,7 +50,7 @@ class MarketInfo(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of MarketInfo from a JSON string"""
+        """Create an instance of RespGetIsNextBridgeFast from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -92,7 +82,7 @@ class MarketInfo(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of MarketInfo from a dict"""
+        """Create an instance of RespGetIsNextBridgeFast from a dict"""
         if obj is None:
             return None
 
@@ -100,19 +90,9 @@ class MarketInfo(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "market_id": obj.get("market_id"),
-            "index_price": obj.get("index_price"),
-            "mark_price": obj.get("mark_price"),
-            "open_interest": obj.get("open_interest"),
-            "last_trade_price": obj.get("last_trade_price"),
-            "current_funding_rate": obj.get("current_funding_rate"),
-            "funding_rate": obj.get("funding_rate"),
-            "funding_timestamp": obj.get("funding_timestamp"),
-            "daily_base_token_volume": obj.get("daily_base_token_volume"),
-            "daily_quote_token_volume": obj.get("daily_quote_token_volume"),
-            "daily_price_low": obj.get("daily_price_low"),
-            "daily_price_high": obj.get("daily_price_high"),
-            "daily_price_change": obj.get("daily_price_change")
+            "code": obj.get("code"),
+            "message": obj.get("message"),
+            "is_next_bridge_fast": obj.get("is_next_bridge_fast")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():

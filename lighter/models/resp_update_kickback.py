@@ -17,33 +17,20 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr
 from typing import Any, ClassVar, Dict, List, Optional
-from typing_extensions import Annotated
 from typing import Optional, Set
 from typing_extensions import Self
 
-class ReqGetPublicPools(BaseModel):
+class RespUpdateKickback(BaseModel):
     """
-    ReqGetPublicPools
+    RespUpdateKickback
     """ # noqa: E501
-    auth: Optional[StrictStr] = None
-    filter: Optional[StrictStr] = None
-    index: StrictInt
-    limit: Annotated[int, Field(le=100, strict=True, ge=1)]
-    account_index: Optional[StrictInt] = None
+    code: StrictInt
+    message: Optional[StrictStr] = None
+    success: StrictBool
     additional_properties: Dict[str, Any] = {}
-    __properties: ClassVar[List[str]] = ["auth", "filter", "index", "limit", "account_index"]
-
-    @field_validator('filter')
-    def filter_validate_enum(cls, value):
-        """Validates the enum"""
-        if value is None:
-            return value
-
-        if value not in set(['all', 'user', 'protocol', 'account_index']):
-            raise ValueError("must be one of enum values ('all', 'user', 'protocol', 'account_index')")
-        return value
+    __properties: ClassVar[List[str]] = ["code", "message", "success"]
 
     model_config = ConfigDict(
         populate_by_name=True,
@@ -63,7 +50,7 @@ class ReqGetPublicPools(BaseModel):
 
     @classmethod
     def from_json(cls, json_str: str) -> Optional[Self]:
-        """Create an instance of ReqGetPublicPools from a JSON string"""
+        """Create an instance of RespUpdateKickback from a JSON string"""
         return cls.from_dict(json.loads(json_str))
 
     def to_dict(self) -> Dict[str, Any]:
@@ -95,7 +82,7 @@ class ReqGetPublicPools(BaseModel):
 
     @classmethod
     def from_dict(cls, obj: Optional[Dict[str, Any]]) -> Optional[Self]:
-        """Create an instance of ReqGetPublicPools from a dict"""
+        """Create an instance of RespUpdateKickback from a dict"""
         if obj is None:
             return None
 
@@ -103,11 +90,9 @@ class ReqGetPublicPools(BaseModel):
             return cls.model_validate(obj)
 
         _obj = cls.model_validate({
-            "auth": obj.get("auth"),
-            "filter": obj.get("filter"),
-            "index": obj.get("index"),
-            "limit": obj.get("limit"),
-            "account_index": obj.get("account_index")
+            "code": obj.get("code"),
+            "message": obj.get("message"),
+            "success": obj.get("success")
         })
         # store additional fields in additional_properties
         for _key in obj.keys():
